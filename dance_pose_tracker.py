@@ -311,9 +311,8 @@ class InjuryRiskMonitor:
 
 @dataclass
 class BaselineProfile:
-    stride_length: float          # torso-height units
-    cadence: float                # steps per minute
-    knee_extension: float         # degrees (peak extension angle)
+    hip_tilt: float = 0.0         # degrees (peak pelvic obliquity) -- focus metric
+    knee_extension: float = 0.0   # degrees (peak extension angle)
     athlete: str = "unknown"
 
     @classmethod
@@ -321,7 +320,7 @@ class BaselineProfile:
         """Load a baseline CSV.
 
         Accepts either a two-column key,value layout or a single header+row
-        layout. Recognized keys: athlete, stride_length, cadence, knee_extension.
+        layout. Recognized keys: athlete, hip_tilt, knee_extension.
         """
         data: Dict[str, str] = {}
         with open(path, newline="") as fh:
@@ -348,8 +347,7 @@ class BaselineProfile:
                 return default
 
         return cls(
-            stride_length=_num("stride_length"),
-            cadence=_num("cadence"),
+            hip_tilt=_num("hip_tilt"),
             knee_extension=_num("knee_extension"),
             athlete=data.get("athlete", "unknown"),
         )
@@ -366,8 +364,7 @@ def deviation_report(
         return (cur - base) / base * 100.0
 
     return {
-        "stride_length": pct(current.stride_length, baseline.stride_length),
-        "cadence": pct(current.cadence, baseline.cadence),
+        "hip_tilt": pct(current.hip_tilt, baseline.hip_tilt),
         "knee_extension": pct(current.knee_extension, baseline.knee_extension),
     }
 
@@ -384,9 +381,11 @@ class GaitSummary:
     avg_asymmetry_index: float = 0.0
     peak_asymmetry_index: float = 0.0
     injury_flag_frames: int = 0
-    estimated_cadence: float = 0.0
-    estimated_stride_length: float = 0.0
     peak_knee_extension: float = 0.0
+    # Hip tilt (pelvic obliquity) -- primary focus metric.
+    avg_hip_tilt_deg: float = 0.0
+    peak_hip_tilt_deg: float = 0.0
+    hip_tilt_samples: int = 0
 
 
 class GaitAnalyzer:
@@ -400,6 +399,7 @@ class GaitAnalyzer:
         self._asym_samples: List[float] = []
         self._com_series: List[float] = []
         self._knee_extensions: List[float] = []
+        self._hip_tilts: List[float] = []
         self._flag_frames = 0
         self._frames = 0
 
@@ -419,6 +419,9 @@ class GaitAnalyzer:
             if angle is not None:
                 self._knee_extensions.append(angle)
 
+        if fm.pelvic_drop_deg is not None:
+            self._hip_tilts.append(fm.pelvic_drop_deg)
+
     def _vertical_oscillation(self) -> float:
         """Mean peak-to-trough oscillation of the normalized CoM signal."""
         if len(self._com_series) < 3:
@@ -434,20 +437,6 @@ class GaitAnalyzer:
             return 0.0
         return abs(sum(peaks) / len(peaks) - sum(troughs) / len(troughs))
 
-    def _estimate_cadence(self) -> Tuple[float, int]:
-        """Estimate cadence (steps/min) by counting CoM oscillation cycles."""
-        if len(self._com_series) < 3:
-            return 0.0, 0
-        troughs = 0
-        for i in range(1, len(self._com_series) - 1):
-            prev, cur, nxt = self._com_series[i - 1:i + 2]
-            if cur < prev and cur < nxt:
-                troughs += 1
-        # Each CoM trough ~ one ground contact (one step).
-        duration_min = (self._frames / self.fps) / 60.0 if self.fps else 0
-        cadence = troughs / duration_min if duration_min > 0 else 0.0
-        return cadence, troughs
-
     def summarize(self) -> GaitSummary:
         s = GaitSummary()
         s.frames_analyzed = self._frames
@@ -462,13 +451,11 @@ class GaitAnalyzer:
             # Peak extension == largest (straightest) knee angle observed.
             s.peak_knee_extension = max(self._knee_extensions)
 
-        cadence, steps = self._estimate_cadence()
-        s.estimated_cadence = cadence
-        # Stride length proxy (torso-height units): oscillation amplitude scaled
-        # by cadence is a rough but camera-independent surrogate. Without ground
-        # speed we approximate stride as a function of vertical mechanics.
-        if steps > 0:
-            s.estimated_stride_length = round(2.0 * (1.0 - s.avg_vertical_oscillation), 3)
+        # Hip tilt (pelvic obliquity) -- the primary focus metric.
+        if self._hip_tilts:
+            s.avg_hip_tilt_deg = sum(self._hip_tilts) / len(self._hip_tilts)
+            s.peak_hip_tilt_deg = max(self._hip_tilts)
+            s.hip_tilt_samples = len(self._hip_tilts)
         return s
 
 
@@ -530,14 +517,15 @@ def print_scouting_report(
     print(f"  Vertical oscillation  : {summary.avg_vertical_oscillation:.3f} torso-units")
     print(f"  Avg asymmetry index   : {summary.avg_asymmetry_index * 100:.1f}%")
     print(f"  Peak asymmetry index  : {summary.peak_asymmetry_index * 100:.1f}%")
-    print(f"  Estimated cadence     : {summary.estimated_cadence:.0f} steps/min")
+    print(f"  Avg hip tilt          : {summary.avg_hip_tilt_deg:.1f} deg "
+          f"({summary.hip_tilt_samples} frames)")
+    print(f"  Peak hip tilt         : {summary.peak_hip_tilt_deg:.1f} deg")
     print(f"  Peak knee extension   : {summary.peak_knee_extension:.1f} deg")
     print(f"  Injury-flagged frames : {summary.injury_flag_frames}")
 
     if baseline is not None:
         current = BaselineProfile(
-            stride_length=summary.estimated_stride_length,
-            cadence=summary.estimated_cadence,
+            hip_tilt=summary.peak_hip_tilt_deg,
             knee_extension=summary.peak_knee_extension,
         )
         dev = deviation_report(baseline, current)
