@@ -1,0 +1,20 @@
+athlete,sex,birth_year,event,time,year,venue,shoe_tech
+Kenenisa Bekele,M,1982,5000m,12:37.35,2004,Hengelo,classic_spikes
+Kenenisa Bekele,M,1982,10000m,26:17.53,2005,Brussels,classic_spikes
+Kenenisa Bekele,M,1982,marathon,2:01:41,2019,Berlin,vaporfly
+Haile Gebrselassie,M,1973,10000m,26:22.75,1998,Hengelo,classic_spikes
+Haile Gebrselassie,M,1973,marathon,2:03:59,2008,Berlin,classic_flats
+Paul Tergat,M,1969,10000m,26:27.85,1997,Brussels,classic_spikes
+Paul Tergat,M,1969,marathon,2:04:55,2003,Berlin,classic_flats
+Eliud Kipchoge,M,1984,5000m,12:46.53,2004,Rome,classic_spikes
+Eliud Kipchoge,M,1984,marathon,2:01:09,2022,Berlin,alphafly
+Kelvin Kiptum,M,1999,marathon,2:00:35,2023,Chicago,superfoam_2023
+Joshua Cheptegei,M,1996,5000m,12:35.36,2020,Monaco,super_spikes
+Joshua Cheptegei,M,1996,10000m,26:11.00,2020,Valencia,super_spikes
+Mo Farah,M,1983,10000m,26:46.57,2011,Eugene,classic_spikes
+Mo Farah,M,1983,marathon,2:05:11,2018,Chicago,vaporfly
+Paula Radcliffe,F,1973,marathon,2:15:25,2003,London,classic_flats
+Tigst Assefa,F,1996,marathon,2:11:53,2023,Berlin,superfoam_2023
+Ruth Chepngetich,F,1994,marathon,2:09:56,2024,Chicago,superfoam_2023
+Letesenbet Gidey,F,1998,10000m,29:01.03,2021,Hengelo,super_spikes
+Letesenbet Gidey,F,1998,half_marathon,1:02:52,2021,Valencia,alphafly
