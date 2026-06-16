@@ -117,6 +117,26 @@ without it. Pixel measurements are calibrated from the athlete's height
 estimates — good enough to compare athletes and run what-ifs, not lab
 force-plate data.
 
+#### One command on your own machine
+
+If the video lives on your PC, the whole pipeline is a single command (the
+pose step needs `pip install ultralytics opencv-python`):
+
+```bash
+# First pass: track everyone and write per-shot previews + the track IDs.
+python -m athlete_predictor track --video rome_5000m.mp4 --previews previews/
+
+# Look at previews/shot_*.jpg, then pick your athlete per shot and score her:
+python -m athlete_predictor track --video rome_5000m.mp4 \
+    --pick "0:1,2:3,5:2" --athlete-height-cm 165 \
+    --athlete "Senayet Getachew" --event 5000m --gear super_spikes --fatigue-onset 0.6
+```
+
+`--auto` picks the longest-tracked runner per shot if you don't want to
+choose by hand (it can grab the wrong person, so the previews are there to
+check). The heavy pose step runs locally; the small `poses.json` it writes
+can be analysed anywhere with `analyze`.
+
 #### No GPU? Run it on Google Colab
 
 `notebooks/colab_gait_analysis.ipynb` is a ready-to-run notebook: pick a

@@ -158,9 +158,21 @@ def cmd_formcheck(performances, args):
         )
 
 
-def cmd_analyze(performances, args):
-    with open(args.poses) as f:
-        segments, fps, height_cm = segments_from_json(json.load(f))
+def parse_pick(text):
+    """Parse '0:1,2:3' into {shot_index: track_id}."""
+    chosen = {}
+    for pair in text.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        shot, tid = pair.split(":")
+        chosen[int(shot)] = int(tid)
+    return chosen
+
+
+def _report_gait(performances, segments, fps, height_cm,
+                 athlete=None, event="5000m", gear="current", fatigue_onset=None):
+    """Shared gait -> economy -> time report, used by analyze and track."""
     per_segment = [metrics_for_segment(seg, fps, height_cm) for seg in segments]
     weights = [seg[-1].t - seg[0].t if len(seg) > 1 else 1.0 for seg in segments]
     metrics = aggregate_segments(per_segment, weights)
@@ -180,17 +192,65 @@ def cmd_analyze(performances, args):
     gain = economy_penalty(measured)
     print(f"  total running-economy gain available: {gain:.2f}%")
 
-    if args.athlete and gain:
-        athlete = _match_athlete(performances, args.athlete)
-        gear = _resolve_gear(args.gear, args.event)
-        base = predict(performances, athlete, args.event, gear)
-        fixed = predict(performances, athlete, args.event, gear, gain, args.fatigue_onset)
+    if athlete and gain:
+        name = _match_athlete(performances, athlete)
+        g = _resolve_gear(gear, event)
+        base = predict(performances, name, event, g)
+        fixed = predict(performances, name, event, g, gain, fatigue_onset)
         saved = base.time_s - fixed.time_s
         print(
-            f"\n{athlete} at {args.event.replace('_', ' ')} ({gear}): "
+            f"\n{name} at {event.replace('_', ' ')} ({g}): "
             f"{format_time(base.time_s)} -> {format_time(fixed.time_s)} "
             f"if cleaned up to reference (saves {saved:.1f}s)"
         )
+
+
+def cmd_analyze(performances, args):
+    with open(args.poses) as f:
+        segments, fps, height_cm = segments_from_json(json.load(f))
+    _report_gait(performances, segments, fps, height_cm,
+                 args.athlete, args.event, args.gear, args.fatigue_onset)
+
+
+def cmd_track(performances, args):
+    """One command: pose-track a video, pick the athlete, score her gait.
+
+    Heavy CV step -- run this where the video and a GPU/CPU live (your PC),
+    not in the cloud sandbox.
+    """
+    from .video import extract_segments, save_poses_json
+
+    shots = extract_segments(
+        args.video, model=args.model, imgsz=args.imgsz, vid_stride=args.vid_stride,
+    )
+    if args.previews:
+        paths = shots.save_previews(args.previews)
+        print(f"wrote {len(paths)} preview frame(s) to {args.previews}/")
+
+    if args.auto:
+        chosen = {
+            i: shots.track_ids(i)[0]
+            for i in range(len(shots.shots)) if shots.track_ids(i)
+        }
+        print(f"auto-picked longest track per shot: {chosen}")
+    elif args.pick:
+        chosen = parse_pick(args.pick)
+    else:
+        print("\nShots and their track IDs (longest first):")
+        for i in range(len(shots.shots)):
+            print(f"  shot {i}: {shots.track_ids(i)}")
+        print(
+            "\nLook at the preview frames, then re-run with "
+            "--pick '0:ID,2:ID,...' (or --auto to take the longest track per shot)."
+        )
+        return
+
+    save_poses_json(args.out, shots, chosen,
+                    fps=shots.fps, athlete_height_cm=args.athlete_height_cm)
+    print(f"wrote {args.out}\n")
+    segments, fps, height_cm = segments_from_json(json.load(open(args.out)))
+    _report_gait(performances, segments, fps, height_cm,
+                 args.athlete, args.event, args.gear, args.fatigue_onset)
 
 
 def build_parser():
@@ -236,6 +296,25 @@ def build_parser():
     a.add_argument("--gear", default="current", help="shoe tech (default: current)")
     a.add_argument("--fatigue-onset", type=float, default=None, metavar="FRACTION")
 
+    t = sub.add_parser(
+        "track",
+        help="one command: pose-track a video -> gait -> time (run locally, needs CV deps)",
+    )
+    t.add_argument("--video", required=True, help="path to the race video")
+    t.add_argument("--out", default="poses.json", help="where to write the poses JSON")
+    t.add_argument("--athlete-height-cm", type=float, default=170.0)
+    t.add_argument("--model", default="yolov8s-pose.pt")
+    t.add_argument("--imgsz", type=int, default=480)
+    t.add_argument("--vid-stride", type=int, default=1)
+    t.add_argument("--previews", default="previews", help="dir for per-shot preview JPGs")
+    t.add_argument("--pick", default=None, help="shot:id pairs, e.g. '0:1,2:3'")
+    t.add_argument("--auto", action="store_true",
+                   help="auto-pick the longest track per shot (may grab the wrong runner)")
+    t.add_argument("--athlete", default=None, help="dataset name, to show the time impact")
+    t.add_argument("--event", choices=sorted(EVENTS), default="5000m")
+    t.add_argument("--gear", default="current", help="shoe tech (default: current)")
+    t.add_argument("--fatigue-onset", type=float, default=None, metavar="FRACTION")
+
     return parser
 
 
@@ -248,6 +327,7 @@ def main(argv=None):
         "compare": cmd_compare,
         "formcheck": cmd_formcheck,
         "analyze": cmd_analyze,
+        "track": cmd_track,
     }[args.command](performances, args)
 
 

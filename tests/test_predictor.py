@@ -205,6 +205,13 @@ class TestPoseAnalysis(unittest.TestCase):
         self.assertAlmostEqual(out["cadence_spm"], 175)        # averaged
         self.assertAlmostEqual(out["head_sway_cm"], 3)         # only the seen one
 
+    def test_parse_pick(self):
+        from athlete_predictor.cli import parse_pick
+
+        self.assertEqual(parse_pick("0:1,2:3"), {0: 1, 2: 3})
+        self.assertEqual(parse_pick(" 5:2 "), {5: 2})
+        self.assertEqual(parse_pick(""), {})
+
     def test_analyze_command_end_to_end(self):
         import io
         import json
