@@ -106,11 +106,21 @@ def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
     cap = cv2.VideoCapture(video_path)
     real_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    opened = cap.isOpened()
     cap.release()
     eff_fps = real_fps / max(1, vid_stride)
+    if progress:
+        print(f"reading {video_path}: {total} frames @ {real_fps:.0f} fps")
+    if not opened or total <= 0:
+        raise RuntimeError(
+            f"{video_path!r} has no decodable frames (opened={opened}, frames={total}). "
+            "The download almost certainly failed -- check the download cell's output "
+            "and that the file size is more than a few KB."
+        )
 
     shots, previews, current = [], [], {}
     prev_hist, pending_preview, shot_local_idx = None, None, 0
+    processed = 0
     start = time.time()
 
     stream = net.track(
@@ -120,6 +130,7 @@ def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
     for idx, result in enumerate(stream):
         if max_frames and idx >= max_frames:
             break
+        processed = idx + 1
 
         hist = _histogram(cv2, result.orig_img)
         is_cut = (
@@ -156,8 +167,14 @@ def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
         shots.append(current)
         previews.append(pending_preview)
 
+    if not processed:
+        raise RuntimeError(
+            f"the tracker received 0 frames from {video_path!r} even though its header "
+            f"reports {total} frames. The file is likely corrupt or only partially "
+            "downloaded -- re-download it (check the download cell's output)."
+        )
     if progress:
-        print(f"done: {len(shots)} shot(s) in {time.time() - start:.0f}s")
+        print(f"done: {processed} frame(s), {len(shots)} shot(s) in {time.time() - start:.0f}s")
     return _Shots(fps=eff_fps, shots=shots, previews=previews)
 
 
