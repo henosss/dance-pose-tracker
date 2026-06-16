@@ -48,8 +48,18 @@ def _lazy_imports():
     return cv2, YOLO
 
 
+def _histogram(cv2, frame):
+    hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256] * 3)
+    cv2.normalize(hist, hist)
+    return hist
+
+
 def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - needs cv2
-    """Frame indices where the camera cuts, via colour-histogram distance."""
+    """Frame indices where the camera cuts, via colour-histogram distance.
+
+    Standalone helper. ``extract_segments`` does this inline in its single
+    pass instead, so you rarely need to call this separately.
+    """
     cv2, _ = _lazy_imports()
     cap = cv2.VideoCapture(video_path)
     boundaries, prev_hist, idx = [], None, 0
@@ -57,8 +67,7 @@ def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - nee
         ok, frame = cap.read()
         if not ok:
             break
-        hist = cv2.calcHist([frame], [0, 1, 2], None, [8, 8, 8], [0, 256] * 3)
-        cv2.normalize(hist, hist)
+        hist = _histogram(cv2, frame)
         if prev_hist is not None:
             dist = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA)
             if dist > threshold:
@@ -68,55 +77,87 @@ def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - nee
     return boundaries
 
 
-def extract_segments(video_path, model="yolov8n-pose.pt", conf=0.4,
-                     preview_offset=10):  # pragma: no cover - needs cv2
-    """Pose-track every person per camera shot, in a single pass.
+def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
+                     vid_stride=1, cut_threshold=0.5, preview_offset=10,
+                     max_frames=None, device=None, progress=True):  # pragma: no cover
+    """Pose-track every person per camera shot, in a single decode pass.
 
-    Returns an object with ``.fps`` and ``.shots``: a list (one per shot)
-    of dicts mapping track_id -> list of Samples. You then pick the track
-    that is your athlete in each shot (IDs reset at every cut).
+    Speed knobs (all matter on a T4):
+      * ``model``      -- 'yolov8n-pose.pt' (fastest) .. 'yolov8x-pose.pt' (best).
+      * ``imgsz``      -- inference resolution; 480 or 384 is much faster than 640.
+      * ``vid_stride`` -- process every Nth frame (2 ~halves the work). Timestamps
+                          and contact-time stay correct because the reported fps is
+                          divided by the stride.
+      * ``max_frames`` -- cap frames for a quick trial run on a short slice first.
 
-    For each shot it also captures one annotated preview frame (with the
-    track IDs drawn on) ``preview_offset`` frames in, so you can eyeball
-    which ID is your athlete. The IDs on the preview are the same IDs in
-    ``.shots`` because both come from this one tracking pass.
+    Returns an object with ``.fps``, ``.shots`` (one dict per shot mapping
+    track_id -> list of Samples) and ``.previews`` (one annotated frame per
+    shot). Shot cuts are detected inline from the frames YOLO already
+    decodes, so the video is read only once.
     """
+    import time
+
     from .pose_analysis import Sample
 
     cv2, YOLO = _lazy_imports()
     net = YOLO(model)
-    cuts = set(detect_shot_boundaries(video_path))
 
     cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    real_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     cap.release()
+    eff_fps = real_fps / max(1, vid_stride)
 
     shots, previews, current = [], [], {}
-    shot_local_idx = 0
-    pending_preview = None
-    for idx, result in enumerate(net.track(video_path, stream=True, conf=conf, persist=True)):
-        if idx in cuts and current:
+    prev_hist, pending_preview, shot_local_idx = None, None, 0
+    start = time.time()
+
+    stream = net.track(
+        video_path, stream=True, conf=conf, imgsz=imgsz, vid_stride=vid_stride,
+        persist=True, verbose=False, device=device,
+    )
+    for idx, result in enumerate(stream):
+        if max_frames and idx >= max_frames:
+            break
+
+        hist = _histogram(cv2, result.orig_img)
+        is_cut = (
+            prev_hist is not None
+            and cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA) > cut_threshold
+        )
+        prev_hist = hist
+        if is_cut and current:
             shots.append(current)
             previews.append(pending_preview)
             current, shot_local_idx, pending_preview = {}, 0, None
+
         if shot_local_idx == preview_offset:
             pending_preview = result.plot()
         shot_local_idx += 1
-        if result.keypoints is None or result.boxes is None or result.boxes.id is None:
-            continue
-        ids = result.boxes.id.int().tolist()
-        xy = result.keypoints.xy.tolist()
-        for tid, points in zip(ids, xy):
-            kp = {
-                name: (float(x), float(y)) if (x or y) else None
-                for name, (x, y) in zip(COCO_KEYPOINTS, points)
-            }
-            current.setdefault(tid, []).append(Sample(t=idx / fps, kp=kp))
+
+        if result.keypoints is not None and result.boxes is not None \
+                and result.boxes.id is not None:
+            ids = result.boxes.id.int().tolist()
+            xy = result.keypoints.xy.tolist()
+            for tid, points in zip(ids, xy):
+                kp = {
+                    name: (float(x), float(y)) if (x or y) else None
+                    for name, (x, y) in zip(COCO_KEYPOINTS, points)
+                }
+                current.setdefault(tid, []).append(Sample(t=idx / eff_fps, kp=kp))
+
+        if progress and idx and idx % 50 == 0:
+            rate = idx / (time.time() - start)
+            pct = f" ({100 * idx * vid_stride / total:.0f}%)" if total else ""
+            print(f"  frame {idx}{pct} — {rate:.1f} fps, {len(shots) + 1} shot(s)")
+
     if current:
         shots.append(current)
         previews.append(pending_preview)
 
-    return _Shots(fps=fps, shots=shots, previews=previews)
+    if progress:
+        print(f"done: {len(shots)} shot(s) in {time.time() - start:.0f}s")
+    return _Shots(fps=eff_fps, shots=shots, previews=previews)
 
 
 class _Shots:
