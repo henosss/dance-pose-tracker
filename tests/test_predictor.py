@@ -145,5 +145,90 @@ class TestFatigueAndBiomechanics(unittest.TestCase):
         self.assertGreater(floaty, heavy)
 
 
+def _synthetic_runner(n_frames=200, fps=50, foot_period=36, contact_frames=13,
+                      bounce_px=5.0, sway_px=4.0, hip_y=300.0):
+    """A clean synthetic gait signal with known cadence and contact time."""
+    import math
+
+    from athlete_predictor.pose_analysis import Sample
+
+    samples = []
+    for i in range(n_frames):
+        com_y = hip_y + bounce_px * math.sin(2 * math.pi * i / (foot_period / 2))
+        com_x = 100.0 + 3.0 * i  # moving forward
+        nose_x = com_x + sway_px * math.sin(2 * math.pi * i / (foot_period / 2))
+        nose_y = com_y - 60.0
+        left_planted = (i % foot_period) < contact_frames
+        right_planted = ((i + foot_period // 2) % foot_period) < contact_frames
+        l_ankle_y = com_y + (90.0 if left_planted else 40.0)
+        r_ankle_y = com_y + (90.0 if right_planted else 40.0)
+        samples.append(Sample(t=i / fps, kp={
+            "nose": (nose_x, nose_y),
+            "left_hip": (com_x - 10, com_y), "right_hip": (com_x + 10, com_y),
+            "left_ankle": (com_x - 10, l_ankle_y),
+            "right_ankle": (com_x + 10, r_ankle_y),
+        }))
+    return samples, fps
+
+
+class TestPoseAnalysis(unittest.TestCase):
+    def setUp(self):
+        self.samples, self.fps = _synthetic_runner()
+
+    def test_cadence_and_contact_recovered(self):
+        from athlete_predictor.pose_analysis import cadence_and_contact
+
+        cadence, contact = cadence_and_contact(self.samples, self.fps)
+        # foot_period 36 @ 50fps -> a strike every 0.36s -> ~166 spm
+        self.assertTrue(150 < cadence < 185, cadence)
+        # contact 13 frames @ 50 fps -> 260 ms
+        self.assertTrue(230 < contact < 290, contact)
+
+    def test_oscillation_and_sway_positive(self):
+        from athlete_predictor.pose_analysis import (
+            head_sway_cm, pixel_scale_cm, vertical_oscillation_cm,
+        )
+
+        scale = pixel_scale_cm(self.samples, 165)
+        self.assertGreater(scale, 0)
+        self.assertGreater(vertical_oscillation_cm(self.samples, scale), 0)
+        self.assertGreater(head_sway_cm(self.samples, scale), 0)
+
+    def test_aggregate_uses_average_when_metric_missing(self):
+        from athlete_predictor.pose_analysis import aggregate_segments
+
+        seg_full = {"cadence_spm": 180, "ground_contact_ms": 200,
+                    "vertical_osc_cm": 8, "head_sway_cm": 3}
+        seg_no_head = {"cadence_spm": 170, "ground_contact_ms": 220,
+                       "vertical_osc_cm": 9, "head_sway_cm": None}
+        out = aggregate_segments([seg_full, seg_no_head], weights=[1, 1])
+        self.assertAlmostEqual(out["cadence_spm"], 175)        # averaged
+        self.assertAlmostEqual(out["head_sway_cm"], 3)         # only the seen one
+
+    def test_analyze_command_end_to_end(self):
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stdout
+
+        from athlete_predictor.cli import main
+
+        samples, fps = _synthetic_runner()
+        doc = {"fps": fps, "athlete_height_cm": 165, "segments": [[
+            {"t": s.t, "kp": {k: list(v) for k, v in s.kp.items()}} for s in samples
+        ]]}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(doc, f)
+            path = f.name
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(["analyze", "--poses", path, "--athlete", "Senayet Getachew",
+                  "--event", "5000m", "--gear", "super_spikes"])
+        out = buf.getvalue()
+        self.assertIn("running-economy gain available", out)
+        self.assertIn("ground_contact_ms", out)
+
+
 if __name__ == "__main__":
     unittest.main()

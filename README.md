@@ -81,6 +81,42 @@ python -m athlete_predictor formcheck --ground-contact-ms 235 --cadence-spm 182 
 The sensitivities are literature-based estimates; the *inputs* are meant
 to be real measurements from the tracker, not guesses.
 
+#### From a race video to a time (`video.py` + `analyze`)
+
+You can feed those metrics straight from footage instead of typing them.
+The flow splits the broadcast into camera shots, pose-tracks each shot,
+lets you pick your athlete in each one, and averages her gait over only
+the footage where she's actually visible — off-screen time inherits the
+visible average:
+
+```bash
+pip install ultralytics opencv-python        # only needed for the video step
+```
+
+```python
+from athlete_predictor.video import extract_segments, save_poses_json
+
+shots = extract_segments("rome_5000m.mp4", model="yolov8n-pose.pt")
+# track IDs reset at every camera cut, so point at your athlete per shot:
+chosen = {0: 4, 2: 1, 5: 3}        # {shot_index: track_id}
+save_poses_json("senayet_poses.json", shots, chosen,
+                fps=shots.fps, athlete_height_cm=165)
+```
+
+```bash
+# No CV dependencies needed from here on:
+python -m athlete_predictor analyze --poses senayet_poses.json \
+    --athlete "Senayet Getachew" --event 5000m --gear super_spikes \
+    --fatigue-onset 0.6
+```
+
+The gait math (`pose_analysis.py`) is pure stdlib and fully tested;
+`video.py` lazily imports the CV stack so the rest of the package works
+without it. Pixel measurements are calibrated from the athlete's height
+(`pixel_scale_cm`) and depend on camera angle, so the metrics are
+estimates — good enough to compare athletes and run what-ifs, not lab
+force-plate data.
+
 The bundled dataset (`athlete_predictor/data/performances.csv`) contains
 well-known career bests for Bekele, Kipchoge, Kiptum, Gebrselassie, Tergat,
 Cheptegei, Farah, Radcliffe, Assefa, Chepngetich and Gidey, each tagged with

@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 
 from .biomechanics import ELITE_REFERENCE, SENSITIVITY, economy_penalty, metric_penalty
@@ -6,6 +7,7 @@ from .data import load_performances
 from .economy import FORM_FAULT_COST, fatigue_weighted_gain
 from .gear import CURRENT_GEAR, SHOE_BENEFIT
 from .models import EVENTS
+from .pose_analysis import aggregate_segments, metrics_for_segment, segments_from_json
 from .predictor import compare, fit_personal_exponent, format_time, predict
 
 
@@ -156,6 +158,41 @@ def cmd_formcheck(performances, args):
         )
 
 
+def cmd_analyze(performances, args):
+    with open(args.poses) as f:
+        segments, fps, height_cm = segments_from_json(json.load(f))
+    per_segment = [metrics_for_segment(seg, fps, height_cm) for seg in segments]
+    weights = [seg[-1].t - seg[0].t if len(seg) > 1 else 1.0 for seg in segments]
+    metrics = aggregate_segments(per_segment, weights)
+
+    print(f"Tracked {len(segments)} visible segment(s) at {fps:.0f} fps.")
+    print("Race-average gait (off-screen time inherits the visible average):")
+    measured = {}
+    for name in ("ground_contact_ms", "cadence_spm", "vertical_osc_cm", "head_sway_cm"):
+        value = metrics.get(name)
+        if value is None:
+            print(f"  {name:20} (not measurable from these segments)")
+            continue
+        measured[name] = value
+        cost = metric_penalty(name, value)
+        print(f"  {name:20} {value:>7.1f} (ref {ELITE_REFERENCE[name]:>6.1f})  -> +{cost:.2f}%")
+
+    gain = economy_penalty(measured)
+    print(f"  total running-economy gain available: {gain:.2f}%")
+
+    if args.athlete and gain:
+        athlete = _match_athlete(performances, args.athlete)
+        gear = _resolve_gear(args.gear, args.event)
+        base = predict(performances, athlete, args.event, gear)
+        fixed = predict(performances, athlete, args.event, gear, gain, args.fatigue_onset)
+        saved = base.time_s - fixed.time_s
+        print(
+            f"\n{athlete} at {args.event.replace('_', ' ')} ({gear}): "
+            f"{format_time(base.time_s)} -> {format_time(fixed.time_s)} "
+            f"if cleaned up to reference (saves {saved:.1f}s)"
+        )
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="athlete_predictor",
@@ -189,6 +226,16 @@ def build_parser():
     f.add_argument("--event", choices=sorted(EVENTS), default="5000m")
     f.add_argument("--gear", default="current", help="shoe tech (default: current)")
 
+    a = sub.add_parser(
+        "analyze",
+        help="read tracked pose segments (JSON from video.py) and score gait",
+    )
+    a.add_argument("--poses", required=True, help="poses JSON produced by video.py")
+    a.add_argument("--athlete", default=None, help="optional: show the time impact")
+    a.add_argument("--event", choices=sorted(EVENTS), default="5000m")
+    a.add_argument("--gear", default="current", help="shoe tech (default: current)")
+    a.add_argument("--fatigue-onset", type=float, default=None, metavar="FRACTION")
+
     return parser
 
 
@@ -200,6 +247,7 @@ def main(argv=None):
         "predict": cmd_predict,
         "compare": cmd_compare,
         "formcheck": cmd_formcheck,
+        "analyze": cmd_analyze,
     }[args.command](performances, args)
 
 
