@@ -15,6 +15,15 @@ from .biomechanics import (
     flight_to_contact_ratio,
     metric_penalty,
 )
+from .pose_analysis import (
+    Sample,
+    aggregate_segments,
+    hip_rom_deg,
+    metrics_for_segment,
+    preprocess,
+    split_on_gaps,
+)
+from .features import FeatureRecord, append_record, load_records, record_from_metrics
 from .data import load_performances
 from .predictor import (
     age_factor,
@@ -40,6 +49,16 @@ __all__ = [
     "economy_penalty",
     "flight_to_contact_ratio",
     "metric_penalty",
+    "Sample",
+    "aggregate_segments",
+    "hip_rom_deg",
+    "metrics_for_segment",
+    "preprocess",
+    "split_on_gaps",
+    "FeatureRecord",
+    "append_record",
+    "load_records",
+    "record_from_metrics",
     "load_performances",
     "age_factor",
     "compare",

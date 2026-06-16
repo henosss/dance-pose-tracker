@@ -79,7 +79,7 @@ def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - nee
 
 def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
                      vid_stride=1, cut_threshold=0.5, preview_offset=10,
-                     max_frames=None, device=None, half=False,
+                     max_frames=None, device=None, half=False, kp_conf=0.5,
                      progress=True):  # pragma: no cover
     """Pose-track every person per camera shot, in a single decode pass.
 
@@ -151,10 +151,13 @@ def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
                 and result.boxes.id is not None:
             ids = result.boxes.id.int().tolist()
             xy = result.keypoints.xy.tolist()
-            for tid, points in zip(ids, xy):
+            confs = (result.keypoints.conf.tolist()
+                     if result.keypoints.conf is not None else None)
+            for n, (tid, points) in enumerate(zip(ids, xy)):
+                pc = confs[n] if confs is not None else [1.0] * len(points)
                 kp = {
-                    name: (float(x), float(y)) if (x or y) else None
-                    for name, (x, y) in zip(COCO_KEYPOINTS, points)
+                    name: (float(x), float(y)) if (x or y) and c >= kp_conf else None
+                    for name, (x, y), c in zip(COCO_KEYPOINTS, points, pc)
                 }
                 current.setdefault(tid, []).append(Sample(t=idx / eff_fps, kp=kp))
 

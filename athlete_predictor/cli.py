@@ -192,6 +192,10 @@ def _report_gait(performances, segments, fps, height_cm,
     gain = economy_penalty(measured)
     print(f"  total running-economy gain available: {gain:.2f}%")
 
+    rom = metrics.get("hip_rom_deg")
+    if rom is not None:
+        print(f"  hip sagittal ROM:     {rom:>7.1f} deg (descriptive; low = stiff hips)")
+
     if athlete and gain:
         name = _match_athlete(performances, athlete)
         g = _resolve_gear(gear, event)

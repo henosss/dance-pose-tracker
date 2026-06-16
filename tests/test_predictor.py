@@ -205,6 +205,64 @@ class TestPoseAnalysis(unittest.TestCase):
         self.assertAlmostEqual(out["cadence_spm"], 175)        # averaged
         self.assertAlmostEqual(out["head_sway_cm"], 3)         # only the seen one
 
+    def test_split_on_gaps(self):
+        from athlete_predictor.pose_analysis import Sample, split_on_gaps
+
+        samples = [Sample(t, {}) for t in (0.0, 0.02, 0.04, 2.0, 2.02)]
+        clips = split_on_gaps(samples, max_gap_s=0.4)
+        self.assertEqual([len(c) for c in clips], [3, 2])
+
+    def test_hip_rom_recovered(self):
+        import math
+
+        from athlete_predictor.pose_analysis import Sample, hip_rom_deg
+
+        samples = []
+        for i in range(20):
+            dx = 30 * math.sin(2 * math.pi * i / 10)   # thigh swings +/- forward
+            samples.append(Sample(t=i / 50, kp={
+                "left_hip": (100.0, 100.0), "left_knee": (100.0 + dx, 180.0),
+            }))
+        rom = hip_rom_deg(samples)
+        # atan2(30, 80) ~ 20.6 deg each way -> ~41 deg peak-to-peak
+        self.assertTrue(35 < rom < 47, rom)
+
+    def test_preprocess_interpolates_short_gaps(self):
+        from athlete_predictor.pose_analysis import Sample, preprocess
+
+        samples = [
+            Sample(0.00, {"nose": (0.0, 0.0)}),
+            Sample(0.02, {}),                       # occluded frame
+            Sample(0.04, {"nose": (4.0, 0.0)}),
+        ]
+        out = preprocess(samples, max_gap_s=0.3, smooth_window=1)
+        self.assertIn("nose", out[1].kp)             # gap was filled
+        self.assertAlmostEqual(out[1].kp["nose"][0], 2.0)  # linear midpoint
+
+    def test_feature_record_roundtrip(self):
+        import json
+        import tempfile
+
+        from athlete_predictor.features import (
+            FeatureRecord, append_record, load_records, record_from_metrics,
+        )
+
+        rec = record_from_metrics(
+            "Senayet Getachew",
+            {"cadence_spm": 200, "hip_rom_deg": 38, "unknown_key": 1},
+            race="Rome 2026", gear="super_spikes", race_stage="final_laps",
+        )
+        self.assertEqual(rec.cadence_spm, 200)
+        self.assertNotIn("unknown_key", rec.to_dict())   # filtered
+
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            path = f.name
+        append_record(path, rec)
+        append_record(path, FeatureRecord(athlete="Freweyni Hailu", cadence_spm=190))
+        loaded = load_records(path)
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(loaded[0].race, "Rome 2026")
+
     def test_parse_pick(self):
         from athlete_predictor.cli import parse_pick
 

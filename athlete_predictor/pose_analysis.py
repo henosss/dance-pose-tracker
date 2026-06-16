@@ -27,6 +27,7 @@ from statistics import median
 # COCO-17 keypoint names we rely on.
 NOSE = "nose"
 L_HIP, R_HIP = "left_hip", "right_hip"
+L_KNEE, R_KNEE = "left_knee", "right_knee"
 L_ANKLE, R_ANKLE = "left_ankle", "right_ankle"
 
 
@@ -61,6 +62,114 @@ def _runs(flags):
             start = None
     if start is not None:
         yield start, len(flags)
+
+
+def split_on_gaps(samples, max_gap_s=0.4):
+    """Split a track into continuous 'work' clips on presence gaps.
+
+    Broadcast cameras pan and lose the athlete; pixel-based scene cuts miss
+    this. Instead we split wherever the gap between consecutive samples of
+    *this athlete* exceeds ``max_gap_s`` -- i.e. wherever she actually left
+    frame -- which is the segmentation that matters for gait.
+    """
+    if not samples:
+        return []
+    clips, current = [], [samples[0]]
+    for prev, s in zip(samples, samples[1:]):
+        if s.t - prev.t > max_gap_s:
+            clips.append(current)
+            current = []
+        current.append(s)
+    clips.append(current)
+    return clips
+
+
+def _interpolate(times, values, max_gap_s):
+    """Linearly fill short None runs in a value series; long gaps stay None."""
+    out = list(values)
+    i = 0
+    n = len(out)
+    while i < n:
+        if out[i] is not None:
+            i += 1
+            continue
+        j = i
+        while j < n and out[j] is None:
+            j += 1
+        left = i - 1
+        if left >= 0 and j < n and (times[j] - times[left]) <= max_gap_s:
+            x0, x1 = times[left], times[j]
+            v0, v1 = out[left], out[j]
+            for k in range(i, j):
+                f = (times[k] - x0) / (x1 - x0) if x1 > x0 else 0.0
+                out[k] = tuple(a + (b - a) * f for a, b in zip(v0, v1))
+        i = j
+    return out
+
+
+def _median_smooth(values, window):
+    """Coordinate-wise moving median over present points (None passes through)."""
+    if window < 2:
+        return list(values)
+    half = window // 2
+    out = []
+    for i in range(len(values)):
+        if values[i] is None:
+            out.append(None)
+            continue
+        lo, hi = max(0, i - half), min(len(values), i + half + 1)
+        present = [v for v in values[lo:hi] if v is not None]
+        if not present:
+            out.append(values[i])
+            continue
+        xs = sorted(v[0] for v in present)
+        ys = sorted(v[1] for v in present)
+        out.append((xs[len(xs) // 2], ys[len(ys) // 2]))
+    return out
+
+
+def preprocess(samples, max_gap_s=0.3, smooth_window=3):
+    """Occlusion-robust cleanup: interpolate short gaps, then median-smooth.
+
+    Operates per keypoint independently so a momentarily occluded limb is
+    bridged without dragging in the rest of the body. Returns new Samples.
+    """
+    if not samples:
+        return samples
+    names = set()
+    for s in samples:
+        names.update(s.kp)
+    times = [s.t for s in samples]
+    cleaned = {n: [s.kp.get(n) for s in samples] for n in names}
+    for n in names:
+        series = _interpolate(times, cleaned[n], max_gap_s)
+        cleaned[n] = _median_smooth(series, smooth_window)
+    return [
+        Sample(t=times[i], kp={n: cleaned[n][i] for n in names if cleaned[n][i] is not None})
+        for i in range(len(samples))
+    ]
+
+
+def hip_rom_deg(samples):
+    """Sagittal hip range of motion in degrees, from a side-on view.
+
+    Measures the thigh angle (hip -> knee vector) relative to vertical for
+    each leg and returns the larger peak-to-peak swing. Only meaningful when
+    the athlete is filmed roughly side-on; near head-on it collapses.
+    """
+    import math
+
+    best = 0.0
+    for hip, knee in ((L_HIP, L_KNEE), (R_HIP, R_KNEE)):
+        angles = []
+        for s in samples:
+            if not _present(s, hip, knee):
+                continue
+            (hx, hy), (kx, ky) = s.kp[hip], s.kp[knee]
+            angles.append(math.degrees(math.atan2(kx - hx, ky - hy)))
+        if len(angles) >= 3:
+            best = max(best, max(angles) - min(angles))
+    return best if best > 0 else None
 
 
 def pixel_scale_cm(samples, athlete_height_cm):
@@ -164,8 +273,14 @@ def head_sway_cm(samples, scale_cm_per_px):
     return _amplitude(rel_x) * scale_cm_per_px
 
 
-def metrics_for_segment(samples, fps, athlete_height_cm):
-    """All four economy-relevant metrics for one continuous segment."""
+def metrics_for_segment(samples, fps, athlete_height_cm, clean=True):
+    """Gait metrics for one continuous segment.
+
+    With ``clean`` (default) the segment is first interpolated/smoothed to
+    ride out brief occlusions before any metric is computed.
+    """
+    if clean:
+        samples = preprocess(samples)
     scale = pixel_scale_cm(samples, athlete_height_cm)
     cadence, contact = cadence_and_contact(samples, fps)
     return {
@@ -173,6 +288,7 @@ def metrics_for_segment(samples, fps, athlete_height_cm):
         "cadence_spm": cadence,
         "vertical_osc_cm": vertical_oscillation_cm(samples, scale),
         "head_sway_cm": head_sway_cm(samples, scale),
+        "hip_rom_deg": hip_rom_deg(samples),
     }
 
 
@@ -217,7 +333,8 @@ def aggregate_segments(segment_metrics, weights=None):
     if weights is None:
         weights = [1.0] * len(segment_metrics)
     out = {}
-    for key in ("ground_contact_ms", "cadence_spm", "vertical_osc_cm", "head_sway_cm"):
+    for key in ("ground_contact_ms", "cadence_spm", "vertical_osc_cm",
+                "head_sway_cm", "hip_rom_deg"):
         num = den = 0.0
         for m, w in zip(segment_metrics, weights):
             v = m.get(key)
