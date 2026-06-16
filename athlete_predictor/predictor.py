@@ -20,7 +20,12 @@ sweeping the exponent and gear benefit through their uncertainty.
 
 import math
 
-from .economy import ECONOMY_TO_TIME, ECONOMY_TO_TIME_UNCERTAINTY, time_factor
+from .economy import (
+    ECONOMY_TO_TIME,
+    ECONOMY_TO_TIME_UNCERTAINTY,
+    fatigue_weighted_gain,
+    time_factor,
+)
 from .gear import GEAR_UNCERTAINTY, SHOE_BENEFIT
 from .models import EVENTS, Prediction
 
@@ -110,11 +115,16 @@ def _estimate(
     return base * ratio**b * (1.0 - benefit) * time_factor(economy_gain, transfer)
 
 
-def predict(performances, athlete, event, gear, economy_gain=0.0):
+def predict(performances, athlete, event, gear, economy_gain=0.0, fatigue_onset=None):
     """Predict `athlete`'s peak-form time for `event` wearing `gear`.
 
     `economy_gain` is a percentage improvement in running economy (e.g.
     from cleaning up a head wobble); 0 leaves form as recorded.
+
+    `fatigue_onset`, if given (fraction of race distance, 0-1), treats
+    that economy gain as a fatigue-driven fault that only ramps in over
+    the final part of the race, so it is worth less than a fault present
+    throughout. Leave it None for a fault present the whole way.
     """
     target = EVENTS[event]
     target_benefit = SHOE_BENEFIT[gear]
@@ -122,6 +132,9 @@ def predict(performances, athlete, event, gear, economy_gain=0.0):
     if not perfs:
         raise ValueError(f"no performances on record for {athlete!r}")
     personal_b = fit_personal_exponent(perfs)
+
+    if fatigue_onset is not None and economy_gain:
+        economy_gain = fatigue_weighted_gain(economy_gain, fatigue_onset)
 
     transfers = (
         (ECONOMY_TO_TIME - ECONOMY_TO_TIME_UNCERTAINTY,
@@ -160,8 +173,11 @@ def predict(performances, athlete, event, gear, economy_gain=0.0):
     )
 
 
-def compare(performances, athletes, event, gear, economy_gain=0.0):
+def compare(performances, athletes, event, gear, economy_gain=0.0, fatigue_onset=None):
     """Equalized leaderboard: every athlete at peak form in the same gear."""
-    predictions = [predict(performances, a, event, gear, economy_gain) for a in athletes]
+    predictions = [
+        predict(performances, a, event, gear, economy_gain, fatigue_onset)
+        for a in athletes
+    ]
     predictions.sort(key=lambda p: p.time_s)
     return predictions

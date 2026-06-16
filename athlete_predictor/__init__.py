@@ -8,7 +8,13 @@ Kenenisa Bekele run for the marathon in current super shoes?"
 
 from .models import Event, Performance, Prediction, EVENTS
 from .gear import SHOE_BENEFIT
-from .economy import ECONOMY_TO_TIME, FORM_FAULT_COST, time_factor
+from .economy import ECONOMY_TO_TIME, FORM_FAULT_COST, fatigue_weighted_gain, time_factor
+from .biomechanics import (
+    ELITE_REFERENCE,
+    economy_penalty,
+    flight_to_contact_ratio,
+    metric_penalty,
+)
 from .data import load_performances
 from .predictor import (
     age_factor,
@@ -28,7 +34,12 @@ __all__ = [
     "SHOE_BENEFIT",
     "ECONOMY_TO_TIME",
     "FORM_FAULT_COST",
+    "fatigue_weighted_gain",
     "time_factor",
+    "ELITE_REFERENCE",
+    "economy_penalty",
+    "flight_to_contact_ratio",
+    "metric_penalty",
     "load_performances",
     "age_factor",
     "compare",

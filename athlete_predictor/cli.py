@@ -1,8 +1,9 @@
 import argparse
 import sys
 
+from .biomechanics import ELITE_REFERENCE, SENSITIVITY, economy_penalty, metric_penalty
 from .data import load_performances
-from .economy import FORM_FAULT_COST
+from .economy import FORM_FAULT_COST, fatigue_weighted_gain
 from .gear import CURRENT_GEAR, SHOE_BENEFIT
 from .models import EVENTS
 from .predictor import compare, fit_personal_exponent, format_time, predict
@@ -28,6 +29,19 @@ def _add_economy_args(parser):
         "--fix", nargs="+", default=[], metavar="FAULT",
         help=f"form faults to clean up; choices: {', '.join(FORM_FAULT_COST)}",
     )
+    parser.add_argument(
+        "--fatigue-onset", type=float, default=None, metavar="FRACTION",
+        help="treat the gain as a fatigue fault that only ramps in after this "
+             "fraction of the race (e.g. 0.6 for a wobble that starts late)",
+    )
+
+
+def _effective_gain(args):
+    """Economy gain actually applied, after any fatigue weighting."""
+    gain = _economy_gain(args)
+    if getattr(args, "fatigue_onset", None) is not None and gain:
+        return fatigue_weighted_gain(gain, args.fatigue_onset)
+    return gain
 
 
 def _resolve_gear(gear, event):
@@ -65,13 +79,23 @@ def cmd_list(performances, _args):
 def cmd_predict(performances, args):
     gear = _resolve_gear(args.gear, args.event)
     athlete = _match_athlete(performances, args.athlete)
-    gain = _economy_gain(args)
-    pred = predict(performances, athlete, args.event, gear, gain)
+    raw_gain = _economy_gain(args)
+    gain = _effective_gain(args)
+    pred = predict(
+        performances, athlete, args.event, gear, raw_gain, args.fatigue_onset
+    )
     print(f"{athlete} at physical peak, {args.event.replace('_', ' ')}, gear: {gear}")
     if gain:
         baseline = predict(performances, athlete, args.event, gear)
         saved = baseline.time_s - pred.time_s
-        print(f"  with +{gain:.1f}% running economy (saves {saved:.1f}s vs current form)")
+        note = ""
+        if args.fatigue_onset is not None and raw_gain:
+            note = (f"; {raw_gain:.1f}% fault from {args.fatigue_onset:.0%} race "
+                    f"distance averages to {gain:.2f}%")
+        print(
+            f"  with +{gain:.2f}% effective running economy "
+            f"(saves {saved:.1f}s vs current form{note})"
+        )
     print(f"  predicted: {format_time(pred.time_s)}")
     print(f"  range:     {format_time(pred.low_s)} - {format_time(pred.high_s)}")
     print("  based on:")
@@ -85,7 +109,10 @@ def cmd_predict(performances, args):
 def cmd_compare(performances, args):
     gear = _resolve_gear(args.gear, args.event)
     athletes = [_match_athlete(performances, a) for a in args.athletes]
-    preds = compare(performances, athletes, args.event, gear, _economy_gain(args))
+    preds = compare(
+        performances, athletes, args.event, gear,
+        _economy_gain(args), args.fatigue_onset,
+    )
     print(f"Equalized {args.event.replace('_', ' ')} - everyone at peak in {gear}:")
     leader = preds[0].time_s
     for i, p in enumerate(preds, 1):
@@ -94,6 +121,38 @@ def cmd_compare(performances, args):
         print(
             f"  {i}. {p.athlete:22} {format_time(p.time_s)} "
             f"({format_time(p.low_s)} - {format_time(p.high_s)}){gap_str}"
+        )
+
+
+def cmd_formcheck(performances, args):
+    metrics = {
+        "ground_contact_ms": args.ground_contact_ms,
+        "vertical_osc_cm": args.vertical_osc_cm,
+        "cadence_spm": args.cadence_spm,
+        "head_sway_cm": args.head_sway_cm,
+    }
+    metrics = {k: v for k, v in metrics.items() if v is not None}
+    if not metrics:
+        sys.exit("give at least one measured metric, e.g. --ground-contact-ms 230")
+
+    print("Form check vs elite reference (economy cost of being worse):")
+    for name, value in metrics.items():
+        ref = ELITE_REFERENCE[name]
+        cost = metric_penalty(name, value)
+        print(f"  {name:20} {value:>7.1f} (ref {ref:>6.1f})  -> +{cost:.2f}% economy")
+    gain = economy_penalty(metrics)
+    print(f"  total running-economy gain available: {gain:.2f}%")
+
+    if args.athlete:
+        athlete = _match_athlete(performances, args.athlete)
+        gear = _resolve_gear(args.gear, args.event)
+        base = predict(performances, athlete, args.event, gear)
+        fixed = predict(performances, athlete, args.event, gear, gain)
+        saved = base.time_s - fixed.time_s
+        print(
+            f"\nFor {athlete} at {args.event.replace('_', ' ')} ({gear}): "
+            f"{format_time(base.time_s)} -> {format_time(fixed.time_s)} "
+            f"(saves {saved:.1f}s if cleaned up to reference)"
         )
 
 
@@ -118,15 +177,30 @@ def build_parser():
     c.add_argument("--gear", default="current", help="shoe tech (default: current)")
     _add_economy_args(c)
 
+    f = sub.add_parser(
+        "formcheck",
+        help="estimate economy cost of measured biomechanics (pose-tracker metrics)",
+    )
+    f.add_argument("--ground-contact-ms", type=float, default=None)
+    f.add_argument("--vertical-osc-cm", type=float, default=None)
+    f.add_argument("--cadence-spm", type=float, default=None)
+    f.add_argument("--head-sway-cm", type=float, default=None)
+    f.add_argument("--athlete", default=None, help="optional: show the time impact")
+    f.add_argument("--event", choices=sorted(EVENTS), default="5000m")
+    f.add_argument("--gear", default="current", help="shoe tech (default: current)")
+
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     performances = load_performances()
-    {"list": cmd_list, "predict": cmd_predict, "compare": cmd_compare}[args.command](
-        performances, args
-    )
+    {
+        "list": cmd_list,
+        "predict": cmd_predict,
+        "compare": cmd_compare,
+        "formcheck": cmd_formcheck,
+    }[args.command](performances, args)
 
 
 if __name__ == "__main__":

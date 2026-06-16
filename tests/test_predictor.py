@@ -100,6 +100,50 @@ class TestModel(unittest.TestCase):
         )
         self.assertEqual(base.time_s, same.time_s)
 
+    def test_late_onset_fault_saves_less_than_whole_race_fault(self):
+        whole = predict(self.perfs, "Senayet Getachew", "5000m", "super_spikes", 1.5)
+        late = predict(
+            self.perfs, "Senayet Getachew", "5000m", "super_spikes", 1.5,
+            fatigue_onset=0.6,
+        )
+        base = predict(self.perfs, "Senayet Getachew", "5000m", "super_spikes")
+        self.assertLess(whole.time_s, late.time_s)   # whole-race fix gains more
+        self.assertLess(late.time_s, base.time_s)     # but a late fix still helps
+
+
+class TestFatigueAndBiomechanics(unittest.TestCase):
+    def test_fatigue_ramp_matches_formula(self):
+        from athlete_predictor import fatigue_weighted_gain
+
+        # ramp from 60% distance to finish: average cost = 1.5 * 0.4 / 2
+        self.assertAlmostEqual(fatigue_weighted_gain(1.5, 0.6), 1.5 * 0.4 / 2)
+        self.assertEqual(fatigue_weighted_gain(2.0, 1.0), 0.0)  # never bites
+
+    def test_metric_at_reference_costs_nothing(self):
+        from athlete_predictor import ELITE_REFERENCE, metric_penalty
+
+        for name, ref in ELITE_REFERENCE.items():
+            self.assertEqual(metric_penalty(name, ref), 0.0)
+
+    def test_longer_ground_contact_costs_economy(self):
+        from athlete_predictor import metric_penalty
+
+        # 230 ms vs 180 ms reference -> 50 ms * 0.06 = 3.0%
+        self.assertAlmostEqual(metric_penalty("ground_contact_ms", 230), 3.0)
+
+    def test_better_than_reference_is_not_a_bonus(self):
+        from athlete_predictor import metric_penalty
+
+        self.assertEqual(metric_penalty("ground_contact_ms", 160), 0.0)
+        self.assertEqual(metric_penalty("cadence_spm", 200), 0.0)
+
+    def test_flight_to_contact_ratio(self):
+        from athlete_predictor import flight_to_contact_ratio
+
+        floaty = flight_to_contact_ratio(160, 140)
+        heavy = flight_to_contact_ratio(240, 90)
+        self.assertGreater(floaty, heavy)
+
 
 if __name__ == "__main__":
     unittest.main()

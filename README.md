@@ -50,6 +50,37 @@ only ~two-thirds of an oxygen saving into speed (`ECONOMY_TO_TIME`), so a
 (`head_wobble`, `vertical_oscillation`, `overstriding`, `arm_crossover`)
 are starting-point estimates you can tune in `economy.py`.
 
+#### Fatigue-driven faults
+
+A flaw that only appears late in the race (a head wobble that creeps in
+as the athlete tires) costs less over the whole distance than one present
+from the gun. `--fatigue-onset FRACTION` ramps the fault in linearly from
+that fraction of race distance to the finish, so its *average* cost is
+`gain × (1 − onset) / 2`:
+
+```bash
+# A 1.5% wobble that only bites from 60% distance onward
+python -m athlete_predictor predict --athlete "Senayet Getachew" \
+    --event 5000m --gear super_spikes --fix head_wobble --fatigue-onset 0.6
+```
+
+#### Form check from pose-tracker metrics (`formcheck`)
+
+Ground contact time, vertical oscillation, cadence and head sway all come
+straight out of side-on pose tracking — the "floating" stride is a short
+ground contact with a high flight-to-contact ratio; a stiff, heavy stride
+is a long contact. `formcheck` scores those measured numbers against an
+elite reference (`biomechanics.py`) and reports the economy — and time —
+on the table:
+
+```bash
+python -m athlete_predictor formcheck --ground-contact-ms 235 --cadence-spm 182 \
+    --athlete "Freweyni Hailu" --event 5000m --gear super_spikes
+```
+
+The sensitivities are literature-based estimates; the *inputs* are meant
+to be real measurements from the tracker, not guesses.
+
 The bundled dataset (`athlete_predictor/data/performances.csv`) contains
 well-known career bests for Bekele, Kipchoge, Kiptum, Gebrselassie, Tergat,
 Cheptegei, Farah, Radcliffe, Assefa, Chepngetich and Gidey, each tagged with

@@ -39,3 +39,21 @@ def time_factor(economy_gain_pct, transfer=ECONOMY_TO_TIME):
     (e.g. 2.0 for a 2% better economy). Returns a value <= 1.0.
     """
     return 1.0 - (economy_gain_pct / 100.0) * transfer
+
+
+def fatigue_weighted_gain(gain_pct, onset):
+    """Economy gain available when a fault only shows up as fatigue sets in.
+
+    A fault that creeps in late (a head wobble that appears once the
+    athlete tires) costs less over the whole race than one present from
+    the gun. We model it ramping linearly from no effect at `onset`
+    (fraction of race distance, 0-1) to its full cost at the finish, so
+    its average cost over the race is ``gain * (1 - onset) / 2``.
+
+    `onset` of 1.0 means the fault never really bites (no cost); 0.0
+    means it builds gradually across the entire race.
+    """
+    if not 0.0 <= onset <= 1.0:
+        raise ValueError("onset must be between 0 and 1")
+    return gain_pct * (1.0 - onset) / 2.0
+
