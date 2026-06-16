@@ -79,7 +79,8 @@ def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - nee
 
 def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
                      vid_stride=1, cut_threshold=0.5, preview_offset=10,
-                     max_frames=None, device=None, progress=True):  # pragma: no cover
+                     max_frames=None, device=None, half=False,
+                     progress=True):  # pragma: no cover
     """Pose-track every person per camera shot, in a single decode pass.
 
     Speed knobs (all matter on a T4):
@@ -114,7 +115,7 @@ def extract_segments(video_path, model="yolov8s-pose.pt", conf=0.4, imgsz=640,
 
     stream = net.track(
         video_path, stream=True, conf=conf, imgsz=imgsz, vid_stride=vid_stride,
-        persist=True, verbose=False, device=device,
+        persist=True, verbose=False, device=device, half=half,
     )
     for idx, result in enumerate(stream):
         if max_frames and idx >= max_frames:
