@@ -117,6 +117,14 @@ without it. Pixel measurements are calibrated from the athlete's height
 estimates — good enough to compare athletes and run what-ifs, not lab
 force-plate data.
 
+#### No GPU? Run it on Google Colab
+
+`notebooks/colab_gait_analysis.ipynb` is a ready-to-run notebook: pick a
+GPU runtime, upload your video, and it pose-tracks each camera shot,
+shows you a labelled preview of every runner's track ID so you can point
+at your athlete, then prints her gait metrics and equalized time. Open it
+via [Colab](https://colab.research.google.com/github/henosss/dance-pose-tracker/blob/claude/athletic-performance-predictor-gmhkll/notebooks/colab_gait_analysis.ipynb).
+
 The bundled dataset (`athlete_predictor/data/performances.csv`) contains
 well-known career bests for Bekele, Kipchoge, Kiptum, Gebrselassie, Tergat,
 Cheptegei, Farah, Radcliffe, Assefa, Chepngetich and Gidey, each tagged with

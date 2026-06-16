@@ -68,12 +68,18 @@ def detect_shot_boundaries(video_path, threshold=0.5):  # pragma: no cover - nee
     return boundaries
 
 
-def extract_segments(video_path, model="yolov8n-pose.pt", conf=0.4):  # pragma: no cover
-    """Pose-track every person per camera shot.
+def extract_segments(video_path, model="yolov8n-pose.pt", conf=0.4,
+                     preview_offset=10):  # pragma: no cover - needs cv2
+    """Pose-track every person per camera shot, in a single pass.
 
     Returns an object with ``.fps`` and ``.shots``: a list (one per shot)
     of dicts mapping track_id -> list of Samples. You then pick the track
     that is your athlete in each shot (IDs reset at every cut).
+
+    For each shot it also captures one annotated preview frame (with the
+    track IDs drawn on) ``preview_offset`` frames in, so you can eyeball
+    which ID is your athlete. The IDs on the preview are the same IDs in
+    ``.shots`` because both come from this one tracking pass.
     """
     from .pose_analysis import Sample
 
@@ -85,11 +91,17 @@ def extract_segments(video_path, model="yolov8n-pose.pt", conf=0.4):  # pragma: 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     cap.release()
 
-    shots, current = [], {}
+    shots, previews, current = [], [], {}
+    shot_local_idx = 0
+    pending_preview = None
     for idx, result in enumerate(net.track(video_path, stream=True, conf=conf, persist=True)):
         if idx in cuts and current:
             shots.append(current)
-            current = {}
+            previews.append(pending_preview)
+            current, shot_local_idx, pending_preview = {}, 0, None
+        if shot_local_idx == preview_offset:
+            pending_preview = result.plot()
+        shot_local_idx += 1
         if result.keypoints is None or result.boxes is None or result.boxes.id is None:
             continue
         ids = result.boxes.id.int().tolist()
@@ -102,14 +114,36 @@ def extract_segments(video_path, model="yolov8n-pose.pt", conf=0.4):  # pragma: 
             current.setdefault(tid, []).append(Sample(t=idx / fps, kp=kp))
     if current:
         shots.append(current)
+        previews.append(pending_preview)
 
-    return _Shots(fps=fps, shots=shots)
+    return _Shots(fps=fps, shots=shots, previews=previews)
 
 
 class _Shots:
-    def __init__(self, fps, shots):
+    def __init__(self, fps, shots, previews=None):
         self.fps = fps
         self.shots = shots
+        self.previews = previews or []
+
+    def track_ids(self, shot_index):
+        """Track IDs visible in a shot, longest-tracked first."""
+        tracks = self.shots[shot_index]
+        return sorted(tracks, key=lambda tid: -len(tracks[tid]))
+
+    def save_previews(self, out_dir):  # pragma: no cover - needs cv2
+        """Write one annotated JPG per shot for picking your athlete."""
+        import os
+
+        cv2, _ = _lazy_imports()
+        os.makedirs(out_dir, exist_ok=True)
+        paths = []
+        for i, img in enumerate(self.previews):
+            if img is None:
+                continue
+            path = os.path.join(out_dir, f"shot_{i:03d}.jpg")
+            cv2.imwrite(path, img)
+            paths.append(path)
+        return paths
 
 
 def save_poses_json(path, shots, chosen, fps, athlete_height_cm):
