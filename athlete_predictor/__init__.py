@@ -8,6 +8,7 @@ Kenenisa Bekele run for the marathon in current super shoes?"
 
 from .models import Event, Performance, Prediction, EVENTS
 from .gear import SHOE_BENEFIT
+from .economy import ECONOMY_TO_TIME, FORM_FAULT_COST, time_factor
 from .data import load_performances
 from .predictor import (
     age_factor,
@@ -25,6 +26,9 @@ __all__ = [
     "Prediction",
     "EVENTS",
     "SHOE_BENEFIT",
+    "ECONOMY_TO_TIME",
+    "FORM_FAULT_COST",
+    "time_factor",
     "load_performances",
     "age_factor",
     "compare",

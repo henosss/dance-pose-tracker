@@ -20,6 +20,7 @@ sweeping the exponent and gear benefit through their uncertainty.
 
 import math
 
+from .economy import ECONOMY_TO_TIME, ECONOMY_TO_TIME_UNCERTAINTY, time_factor
 from .gear import GEAR_UNCERTAINTY, SHOE_BENEFIT
 from .models import EVENTS, Prediction
 
@@ -98,16 +99,23 @@ def _exponent_for(source_d, target_d, personal_b):
     return b
 
 
-def _estimate(perf, target, target_benefit, personal_b, b_delta=0.0, gear_delta=0.0):
+def _estimate(
+    perf, target, target_benefit, personal_b,
+    b_delta=0.0, gear_delta=0.0, economy_gain=0.0, transfer=ECONOMY_TO_TIME,
+):
     base = neutral_peak_time(perf)
     ratio = target.distance_m / perf.distance_m
     b = _exponent_for(perf.distance_m, target.distance_m, personal_b) + b_delta
     benefit = target_benefit + gear_delta if target_benefit > 0 else target_benefit
-    return base * ratio**b * (1.0 - benefit)
+    return base * ratio**b * (1.0 - benefit) * time_factor(economy_gain, transfer)
 
 
-def predict(performances, athlete, event, gear):
-    """Predict `athlete`'s peak-form time for `event` wearing `gear`."""
+def predict(performances, athlete, event, gear, economy_gain=0.0):
+    """Predict `athlete`'s peak-form time for `event` wearing `gear`.
+
+    `economy_gain` is a percentage improvement in running economy (e.g.
+    from cleaning up a head wobble); 0 leaves form as recorded.
+    """
     target = EVENTS[event]
     target_benefit = SHOE_BENEFIT[gear]
     perfs = [p for p in performances if p.athlete == athlete]
@@ -115,19 +123,30 @@ def predict(performances, athlete, event, gear):
         raise ValueError(f"no performances on record for {athlete!r}")
     personal_b = fit_personal_exponent(perfs)
 
+    transfers = (
+        (ECONOMY_TO_TIME - ECONOMY_TO_TIME_UNCERTAINTY,
+         ECONOMY_TO_TIME,
+         ECONOMY_TO_TIME + ECONOMY_TO_TIME_UNCERTAINTY)
+        if economy_gain else (ECONOMY_TO_TIME,)
+    )
+
     basis, weights = [], []
     candidates = []
     for p in perfs:
-        mid = _estimate(p, target, target_benefit, personal_b)
+        mid = _estimate(p, target, target_benefit, personal_b, economy_gain=economy_gain)
         ratio_gap = abs(math.log(target.distance_m / p.distance_m))
         weight = 1.0 / (0.25 + ratio_gap)
         basis.append((p, mid))
         weights.append(weight)
         for b_delta in (-EXPONENT_UNCERTAINTY, 0.0, EXPONENT_UNCERTAINTY):
             for gear_delta in (-GEAR_UNCERTAINTY, 0.0, GEAR_UNCERTAINTY):
-                candidates.append(
-                    _estimate(p, target, target_benefit, personal_b, b_delta, gear_delta)
-                )
+                for transfer in transfers:
+                    candidates.append(
+                        _estimate(
+                            p, target, target_benefit, personal_b,
+                            b_delta, gear_delta, economy_gain, transfer,
+                        )
+                    )
 
     log_mid = sum(w * math.log(t) for (_, t), w in zip(basis, weights)) / sum(weights)
     return Prediction(
@@ -141,8 +160,8 @@ def predict(performances, athlete, event, gear):
     )
 
 
-def compare(performances, athletes, event, gear):
+def compare(performances, athletes, event, gear, economy_gain=0.0):
     """Equalized leaderboard: every athlete at peak form in the same gear."""
-    predictions = [predict(performances, a, event, gear) for a in athletes]
+    predictions = [predict(performances, a, event, gear, economy_gain) for a in athletes]
     predictions.sort(key=lambda p: p.time_s)
     return predictions

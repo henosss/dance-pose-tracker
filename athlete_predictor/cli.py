@@ -2,9 +2,32 @@ import argparse
 import sys
 
 from .data import load_performances
+from .economy import FORM_FAULT_COST
 from .gear import CURRENT_GEAR, SHOE_BENEFIT
 from .models import EVENTS
 from .predictor import compare, fit_personal_exponent, format_time, predict
+
+
+def _economy_gain(args):
+    """Total running-economy % gain from --economy-gain plus any --fix faults."""
+    gain = args.economy_gain
+    for fault in getattr(args, "fix", None) or []:
+        if fault not in FORM_FAULT_COST:
+            import sys
+            sys.exit(f"unknown form fault {fault!r}; choices: {', '.join(FORM_FAULT_COST)}")
+        gain += FORM_FAULT_COST[fault]
+    return gain
+
+
+def _add_economy_args(parser):
+    parser.add_argument(
+        "--economy-gain", type=float, default=0.0,
+        help="running-economy improvement in %% (e.g. 2 for 2%% cleaner form)",
+    )
+    parser.add_argument(
+        "--fix", nargs="+", default=[], metavar="FAULT",
+        help=f"form faults to clean up; choices: {', '.join(FORM_FAULT_COST)}",
+    )
 
 
 def _resolve_gear(gear, event):
@@ -42,8 +65,13 @@ def cmd_list(performances, _args):
 def cmd_predict(performances, args):
     gear = _resolve_gear(args.gear, args.event)
     athlete = _match_athlete(performances, args.athlete)
-    pred = predict(performances, athlete, args.event, gear)
+    gain = _economy_gain(args)
+    pred = predict(performances, athlete, args.event, gear, gain)
     print(f"{athlete} at physical peak, {args.event.replace('_', ' ')}, gear: {gear}")
+    if gain:
+        baseline = predict(performances, athlete, args.event, gear)
+        saved = baseline.time_s - pred.time_s
+        print(f"  with +{gain:.1f}% running economy (saves {saved:.1f}s vs current form)")
     print(f"  predicted: {format_time(pred.time_s)}")
     print(f"  range:     {format_time(pred.low_s)} - {format_time(pred.high_s)}")
     print("  based on:")
@@ -57,7 +85,7 @@ def cmd_predict(performances, args):
 def cmd_compare(performances, args):
     gear = _resolve_gear(args.gear, args.event)
     athletes = [_match_athlete(performances, a) for a in args.athletes]
-    preds = compare(performances, athletes, args.event, gear)
+    preds = compare(performances, athletes, args.event, gear, _economy_gain(args))
     print(f"Equalized {args.event.replace('_', ' ')} - everyone at peak in {gear}:")
     leader = preds[0].time_s
     for i, p in enumerate(preds, 1):
@@ -82,11 +110,13 @@ def build_parser():
     p.add_argument("--athlete", required=True)
     p.add_argument("--event", choices=sorted(EVENTS), default="marathon")
     p.add_argument("--gear", default="current", help="shoe tech (default: current)")
+    _add_economy_args(p)
 
     c = sub.add_parser("compare", help="equalized leaderboard for several athletes")
     c.add_argument("--athletes", nargs="+", required=True)
     c.add_argument("--event", choices=sorted(EVENTS), default="marathon")
     c.add_argument("--gear", default="current", help="shoe tech (default: current)")
+    _add_economy_args(c)
 
     return parser
 

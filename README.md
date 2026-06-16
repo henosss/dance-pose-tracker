@@ -26,6 +26,30 @@ Every recorded performance is normalized before athletes are compared:
    athlete's performances are combined with a distance-weighted geometric
    mean, and parameter uncertainty is swept to produce a low–high range.
 
+### Running economy (form efficiency)
+
+Energy spent on motion that doesn't drive you forward — head wobble,
+excessive vertical bounce, lateral sway, overstriding — is *wasted
+running economy*. This is exactly what a pose tracker (the rest of this
+repo) can measure frame-by-frame. The `--economy-gain` and `--fix`
+options model what happens if an athlete cleans that up:
+
+```bash
+# A named form fault with a built-in ballpark cost
+python -m athlete_predictor predict --athlete gidey --event 5000m \
+    --gear super_spikes --fix head_wobble
+
+# Or set the economy improvement directly (in %)
+python -m athlete_predictor predict --athlete gidey --event 5000m \
+    --gear super_spikes --economy-gain 1.5
+```
+
+Economy gains don't transfer 1:1 to time — a runner near VO₂max converts
+only ~two-thirds of an oxygen saving into speed (`ECONOMY_TO_TIME`), so a
+1.5% cleaner stride buys roughly 1% off the clock. Built-in fault costs
+(`head_wobble`, `vertical_oscillation`, `overstriding`, `arm_crossover`)
+are starting-point estimates you can tune in `economy.py`.
+
 The bundled dataset (`athlete_predictor/data/performances.csv`) contains
 well-known career bests for Bekele, Kipchoge, Kiptum, Gebrselassie, Tergat,
 Cheptegei, Farah, Radcliffe, Assefa, Chepngetich and Gidey, each tagged with

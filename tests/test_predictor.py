@@ -75,6 +75,31 @@ class TestModel(unittest.TestCase):
         with self.assertRaises(ValueError):
             predict(self.perfs, "Usain Bolt", "marathon", "superfoam_2023")
 
+    def test_economy_gain_makes_athlete_faster(self):
+        base = predict(self.perfs, "Letesenbet Gidey", "5000m", "super_spikes")
+        cleaned = predict(
+            self.perfs, "Letesenbet Gidey", "5000m", "super_spikes", economy_gain=2.0
+        )
+        self.assertLess(cleaned.time_s, base.time_s)
+
+    def test_economy_gain_transfers_at_about_two_thirds(self):
+        from athlete_predictor import ECONOMY_TO_TIME, time_factor
+
+        base = predict(self.perfs, "Letesenbet Gidey", "5000m", "super_spikes")
+        cleaned = predict(
+            self.perfs, "Letesenbet Gidey", "5000m", "super_spikes", economy_gain=2.0
+        )
+        # A 2% economy gain should save ~2% * transfer of the clock.
+        self.assertAlmostEqual(cleaned.time_s / base.time_s, time_factor(2.0), places=6)
+        self.assertAlmostEqual(time_factor(2.0), 1.0 - 0.02 * ECONOMY_TO_TIME, places=9)
+
+    def test_zero_economy_gain_is_a_no_op(self):
+        base = predict(self.perfs, "Letesenbet Gidey", "5000m", "super_spikes")
+        same = predict(
+            self.perfs, "Letesenbet Gidey", "5000m", "super_spikes", economy_gain=0.0
+        )
+        self.assertEqual(base.time_s, same.time_s)
+
 
 if __name__ == "__main__":
     unittest.main()
