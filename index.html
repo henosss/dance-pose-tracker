@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deutsch Verben — German Verb Flashcards</title>
+<style>
+  :root {
+    --bg: #0f1226; --panel: #1a1f3d; --panel2: #232a52;
+    --text: #eef1ff; --muted: #9aa3d0; --accent: #6c7bff; --accent2: #00d4a0;
+    --warn: #ffb454; --bad: #ff6b81; --good: #41d18f; --line: #2c3360;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 70% -10%, #20264f 0%, var(--bg) 55%);
+    color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 24px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 12px;
+  }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .3px; }
+  h1 span { color: var(--accent2); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; text-align: center; }
+  .stat b { display: block; font-size: 22px; }
+  .stat small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .bar { height: 10px; background: var(--panel2); border-radius: 8px; overflow: hidden; margin-bottom: 24px; border: 1px solid var(--line); }
+  .bar > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0; transition: width .4s; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  select, button { font: inherit; }
+  select {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 12px;
+  }
+  .card {
+    background: linear-gradient(180deg, var(--panel2), var(--panel));
+    border: 1px solid var(--line); border-radius: 22px; padding: 40px 24px;
+    text-align: center; min-height: 230px; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; cursor: pointer; user-select: none;
+    box-shadow: 0 18px 50px -20px rgba(0,0,0,.6);
+  }
+  .level-tag {
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--bg);
+    background: var(--accent2); padding: 3px 10px; border-radius: 20px; margin-bottom: 18px; font-weight: 700;
+  }
+  .word { font-size: 38px; font-weight: 700; margin: 6px 0; }
+  .answer { font-size: 24px; color: var(--accent2); margin-top: 14px; min-height: 30px; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 18px; }
+  .grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
+  .grade button {
+    border: none; border-radius: 12px; padding: 14px 6px; cursor: pointer; color: #08102a;
+    font-weight: 700; font-size: 13px; transition: transform .08s;
+  }
+  .grade button:active { transform: scale(.95); }
+  .grade small { display: block; font-weight: 500; opacity: .7; font-size: 10px; margin-top: 2px; }
+  .g0 { background: var(--bad); } .g1 { background: var(--warn); }
+  .g2 { background: #8fd0ff; } .g3 { background: var(--good); }
+  .flip-btn {
+    width: 100%; margin-top: 18px; border: none; border-radius: 12px; padding: 15px;
+    background: var(--accent); color: white; font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+  .ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 10px; padding: 9px 12px; cursor: pointer; }
+  .ghost:hover { color: var(--text); }
+  .done { text-align: center; padding: 50px 20px; }
+  .done h2 { font-size: 26px; }
+  .footer-actions { display: flex; justify-content: space-between; margin-top: 28px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Deutsch <span>Verben</span> · Flashcards</h1>
+  <button class="ghost" id="resetBtn">Reset progress</button>
+</header>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><b id="sDue">0</b><small>Due now</small></div>
+    <div class="stat"><b id="sLearned">0</b><small>Learned</small></div>
+    <div class="stat"><b id="sNew">0</b><small>New left</small></div>
+    <div class="stat"><b id="sStreak">0</b><small>Day streak</small></div>
+  </div>
+  <div class="bar"><div id="progFill"></div></div>
+
+  <div class="controls">
+    <select id="deckSel">
+      <option value="all">All 400 verbs</option>
+      <option value="b1b2">B1 / B2 — 200 core verbs</option>
+      <option value="c1c2">C1 / C2 — 200 English-cognate verbs</option>
+    </select>
+    <select id="dirSel">
+      <option value="de2en">German → English</option>
+      <option value="en2de">English → German</option>
+    </select>
+    <select id="newSel">
+      <option value="10">10 new / session</option>
+      <option value="20" selected>20 new / session</option>
+      <option value="40">40 new / session</option>
+      <option value="0">Reviews only</option>
+    </select>
+  </div>
+
+  <div id="cardArea"></div>
+
+  <div class="footer-actions">
+    <span class="muted" id="sessionInfo"></span>
+    <span class="muted">Progress saved on this device · SM-2 spaced repetition</span>
+  </div>
+</div>
+
+<script src="words.js"></script>
+<script>
+(function () {
+  "use strict";
+  const STORE_KEY = "deutsch-verben-v1";
+  const DAY = 86400000;
+
+  // ---------- persistence ----------
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function blankState() {
+    return { cards: {}, lastStudied: null, streak: 0, settings: {} };
+  }
+  let state = Object.assign(blankState(), load());
+  if (!state.cards) state.cards = {};
+  function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+  // each card: { ef, reps, interval, due (ms timestamp), lapses }
+  function cardFor(id) {
+    if (!state.cards[id]) {
+      state.cards[id] = { ef: 2.5, reps: 0, interval: 0, due: 0, lapses: 0 };
+    }
+    return state.cards[id];
+  }
+  function isNew(id) { return !state.cards[id] || state.cards[id].reps === 0; }
+  function isDue(id, now) { const c = state.cards[id]; return c && c.reps > 0 && c.due <= now; }
+  function isLearned(id) { const c = state.cards[id]; return c && c.reps > 0; }
+
+  // ---------- SM-2 scheduling ----------
+  // quality: 0 again, 3 hard, 4 good, 5 easy
+  function schedule(card, quality) {
+    const now = Date.now();
+    if (quality < 3) {
+      card.reps = 0;
+      card.interval = 0;
+      card.lapses += 1;
+      card.due = now + 60000; // see again in ~1 min, within session
+    } else {
+      if (card.reps === 0) card.interval = 1;
+      else if (card.reps === 1) card.interval = 6;
+      else card.interval = Math.round(card.interval * card.ef);
+      card.reps += 1;
+      card.ef = Math.max(1.3, card.ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
+      card.due = now + card.interval * DAY;
+    }
+    return card;
+  }
+
+  // ---------- streak ----------
+  function touchStreak() {
+    const t = todayStr();
+    if (state.lastStudied === t) return;
+    const yesterday = new Date(Date.now() - DAY).toISOString().slice(0, 10);
+    state.streak = (state.lastStudied === yesterday) ? (state.streak + 1) : 1;
+    state.lastStudied = t;
+  }
+
+  // ---------- deck building ----------
+  function deckWords() {
+    const d = els.deck.value;
+    return WORDS.filter(w => d === "all" || w.group === d);
+  }
+  function idOf(w) { return w.de; }
+
+  function buildQueue() {
+    const now = Date.now();
+    const words = deckWords();
+    const due = [], fresh = [];
+    for (const w of words) {
+      const id = idOf(w);
+      if (isDue(id, now)) due.push(w);
+      else if (isNew(id)) fresh.push(w);
+    }
+    // also pull cards seen this session that are due again (short interval)
+    const newCap = parseInt(els.newCap.value, 10) || 0;
+    shuffle(fresh);
+    const queue = due.concat(fresh.slice(0, newCap));
+    shuffle(queue);
+    return queue;
+  }
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // ---------- UI ----------
+  const els = {
+    deck: document.getElementById("deckSel"),
+    dir: document.getElementById("dirSel"),
+    newCap: document.getElementById("newSel"),
+    card: document.getElementById("cardArea"),
+    sDue: document.getElementById("sDue"),
+    sLearned: document.getElementById("sLearned"),
+    sNew: document.getElementById("sNew"),
+    sStreak: document.getElementById("sStreak"),
+    fill: document.getElementById("progFill"),
+    session: document.getElementById("sessionInfo"),
+    reset: document.getElementById("resetBtn"),
+  };
+
+  let queue = [];
+  let current = null;
+  let flipped = false;
+  let reviewedThisSession = 0;
+
+  function refreshStats() {
+    const now = Date.now();
+    const words = deckWords();
+    let due = 0, learned = 0, fresh = 0;
+    for (const w of words) {
+      const id = idOf(w);
+      if (isDue(id, now)) due++;
+      if (isLearned(id)) learned++;
+      if (isNew(id)) fresh++;
+    }
+    els.sDue.textContent = due;
+    els.sLearned.textContent = learned;
+    els.sNew.textContent = fresh;
+    els.sStreak.textContent = state.streak || 0;
+    els.fill.style.width = (words.length ? (learned / words.length * 100) : 0) + "%";
+  }
+
+  function startSession() {
+    queue = buildQueue();
+    reviewedThisSession = 0;
+    nextCard();
+    refreshStats();
+  }
+
+  function nextCard() {
+    flipped = false;
+    // requeue any in-session lapses that are due again
+    const now = Date.now();
+    if (queue.length === 0) {
+      const words = deckWords();
+      for (const w of words) {
+        if (isDue(idOf(w), now)) queue.push(w);
+      }
+      shuffle(queue);
+    }
+    if (queue.length === 0) { renderDone(); return; }
+    current = queue.shift();
+    renderCard();
+  }
+
+  function renderCard() {
+    const w = current;
+    const de2en = els.dir.value === "de2en";
+    const front = de2en ? w.de : w.en;
+    const back = de2en ? w.en : w.de;
+    els.card.innerHTML = `
+      <div class="card" id="flipCard">
+        <div class="level-tag">${w.level} · ${w.group === "b1b2" ? "core" : "cognate"}</div>
+        <div class="word">${escapeHtml(front)}</div>
+        <div class="answer" id="answerSlot"></div>
+        <div class="hint">tap card or press Space to reveal</div>
+      </div>
+      <button class="flip-btn" id="revealBtn">Reveal answer</button>`;
+    document.getElementById("flipCard").onclick = reveal;
+    document.getElementById("revealBtn").onclick = reveal;
+    els.session.textContent = `Reviewed ${reviewedThisSession} · ${queue.length + 1} in queue`;
+    current._back = back;
+  }
+
+  function reveal() {
+    if (flipped) return;
+    flipped = true;
+    document.getElementById("answerSlot").textContent = current._back;
+    els.card.querySelector(".hint").textContent = "How well did you know it?";
+    const btn = document.getElementById("revealBtn");
+    btn.outerHTML = `
+      <div class="grade">
+        <button class="g0" data-q="0">Again<small>&lt;1m</small></button>
+        <button class="g1" data-q="3">Hard<small>1d</small></button>
+        <button class="g2" data-q="4">Good<small>days</small></button>
+        <button class="g3" data-q="5">Easy<small>weeks</small></button>
+      </div>`;
+    els.card.querySelectorAll(".grade button").forEach(b => {
+      b.onclick = () => grade(parseInt(b.dataset.q, 10));
+    });
+  }
+
+  function grade(q) {
+    const card = cardFor(idOf(current));
+    schedule(card, q);
+    if (q < 3) queue.push(current); // show again this session
+    reviewedThisSession++;
+    touchStreak();
+    save();
+    nextCard();
+    refreshStats();
+  }
+
+  function renderDone() {
+    current = null;
+    els.card.innerHTML = `
+      <div class="done">
+        <h2>🎉 All caught up!</h2>
+        <p class="muted">No more cards due in this deck right now.<br>
+        You reviewed <b>${reviewedThisSession}</b> card(s) this session.</p>
+        <button class="flip-btn" id="againBtn" style="max-width:260px;margin:18px auto 0;">Study again</button>
+      </div>`;
+    document.getElementById("againBtn").onclick = startSession;
+    els.session.textContent = "";
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---------- events ----------
+  els.deck.onchange = els.dir.onchange = els.newCap.onchange = startSession;
+  els.reset.onclick = () => {
+    if (confirm("Erase all learning progress on this device?")) {
+      state = blankState();
+      save();
+      startSession();
+    }
+  };
+  document.addEventListener("keydown", e => {
+    if (!current) return;
+    if (e.code === "Space") { e.preventDefault(); if (!flipped) reveal(); }
+    else if (flipped && e.key >= "1" && e.key <= "4") {
+      const map = { "1": 0, "2": 3, "3": 4, "4": 5 };
+      grade(map[e.key]);
+    }
+  });
+
+  // restore deck/direction prefs
+  if (state.settings) {
+    if (state.settings.deck) els.deck.value = state.settings.deck;
+    if (state.settings.dir) els.dir.value = state.settings.dir;
+    if (state.settings.newCap) els.newCap.value = state.settings.newCap;
+  }
+  function persistPrefs() {
+    state.settings = { deck: els.deck.value, dir: els.dir.value, newCap: els.newCap.value };
+    save();
+  }
+  els.deck.addEventListener("change", persistPrefs);
+  els.dir.addEventListener("change", persistPrefs);
+  els.newCap.addEventListener("change", persistPrefs);
+
+  startSession();
+})();
+</script>
+</body>
+</html>
