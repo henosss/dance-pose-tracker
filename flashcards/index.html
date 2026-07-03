@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>German B2 Verbs — Flashcards</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-flag">🇩🇪</span>
+      <div>
+        <h1>German B2 Verbs</h1>
+        <p class="subtitle">High-yield verb flashcards</p>
+      </div>
+    </div>
+    <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌓</button>
+  </header>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-value" id="statTotal">0</span>
+      <span class="stat-label">Total</span>
+    </div>
+    <div class="stat stat-known">
+      <span class="stat-value" id="statKnown">0</span>
+      <span class="stat-label">Known</span>
+    </div>
+    <div class="stat stat-learning">
+      <span class="stat-value" id="statLearning">0</span>
+      <span class="stat-label">Learning</span>
+    </div>
+    <div class="stat stat-new">
+      <span class="stat-value" id="statNew">0</span>
+      <span class="stat-label">New</span>
+    </div>
+  </div>
+
+  <div class="progress-bar-track">
+    <div class="progress-bar-fill" id="progressFill"></div>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="search" placeholder="Search a verb or meaning…" autocomplete="off">
+    <select id="modeSelect" title="Study set">
+      <option value="all">All verbs</option>
+      <option value="new">New only</option>
+      <option value="learning">Learning only</option>
+      <option value="known">Known only</option>
+    </select>
+    <button id="shuffleBtn" class="btn">🔀 Shuffle</button>
+    <button id="resetBtn" class="btn btn-ghost">Reset progress</button>
+  </div>
+
+  <main class="card-area">
+    <div class="card-counter" id="cardCounter">1 / 1</div>
+
+    <div class="card-wrap">
+      <button class="nav-arrow nav-prev" id="prevBtn" aria-label="Previous">‹</button>
+
+      <div class="card" id="flashcard" tabindex="0">
+        <div class="card-inner" id="cardInner">
+          <div class="card-face card-front">
+            <div class="face-tag">Infinitive</div>
+            <div class="verb-inf" id="frontInf">—</div>
+            <div class="hint">Click or press space to flip</div>
+          </div>
+          <div class="card-face card-back">
+            <div class="face-tag">Conjugation</div>
+            <div class="verb-inf-small" id="backInf">—</div>
+            <div class="verb-en" id="backEn">—</div>
+            <table class="conj-table">
+              <tr><td class="conj-label">Präsens (er/sie/es)</td><td id="backPres" class="conj-val">—</td></tr>
+              <tr><td class="conj-label">Präteritum</td><td id="backPret" class="conj-val">—</td></tr>
+              <tr><td class="conj-label">Perfekt</td><td id="backPerfekt" class="conj-val">—</td></tr>
+            </table>
+            <div class="example">
+              <div class="example-de" id="backEx">—</div>
+              <div class="example-en" id="backExEn">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="nav-arrow nav-next" id="nextBtn" aria-label="Next">›</button>
+    </div>
+
+    <div class="rating-row">
+      <button class="rate-btn rate-again" id="againBtn">✕ Again</button>
+      <button class="rate-btn rate-good" id="knowBtn">✓ Know it</button>
+    </div>
+
+    <p class="keyhint">Space/Enter: flip · ←/→: navigate · K: know · A: again</p>
+  </main>
+</div>
+<script src="verbs.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
