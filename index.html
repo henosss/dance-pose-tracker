@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Squat Form Coach</title>
+<meta name="description" content="Real-time squat form analysis using your phone camera." />
+<meta name="theme-color" content="#0f172a" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Squat Coach" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Squat Form Coach</h1>
+  <button id="helpBtn" class="icon-btn" aria-label="Help">?</button>
+</header>
+
+<main>
+  <div class="stage" id="stage">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="startOverlay" class="start-overlay">
+      <p>Prop your phone up ~2m away so your whole body is visible, then press start.</p>
+      <button id="startBtn" class="primary-btn">Start Camera</button>
+    </div>
+
+    <div id="feedbackBanner" class="feedback-banner hidden"></div>
+  </div>
+
+  <div class="controls">
+    <button id="toggleBtn" class="primary-btn" disabled>Start Analyzing</button>
+    <button id="switchCamBtn" class="icon-btn" disabled aria-label="Switch camera">⟲</button>
+    <div class="view-toggle" role="group" aria-label="Camera view mode">
+      <button id="sideViewBtn" class="toggle-btn active" data-mode="side">Side View</button>
+      <button id="frontViewBtn" class="toggle-btn" data-mode="front">Front View</button>
+    </div>
+  </div>
+
+  <section class="stats">
+    <div class="stat-card">
+      <span class="stat-value" id="repCount">0</span>
+      <span class="stat-label">Reps</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="lastScore">--</span>
+      <span class="stat-label">Last Rep Score</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="kneeAngleReadout">--°</span>
+      <span class="stat-label">Knee Angle</span>
+    </div>
+  </section>
+
+  <section class="history">
+    <h2>Rep History</h2>
+    <ul id="repList" class="rep-list">
+      <li class="empty-hint">Your reps will appear here.</li>
+    </ul>
+  </section>
+</main>
+
+<div id="helpModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>How to use</h2>
+    <ul>
+      <li><strong>Side View</strong> (recommended): place your phone to the side so your whole body profile is visible. Best for checking squat depth and forward lean.</li>
+      <li><strong>Front View</strong>: place your phone facing you. Best for checking if your knees cave inward.</li>
+      <li>Stand ~1.5–2.5m from the camera, in good lighting, with your full body in frame.</li>
+      <li>This app runs entirely in your browser — no video is uploaded anywhere.</li>
+      <li>This is a form guide, not medical advice. Stop if anything hurts.</li>
+    </ul>
+    <button id="closeHelpBtn" class="primary-btn">Got it</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
